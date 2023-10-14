@@ -16,6 +16,7 @@ Update: 2023-10-13 (WORK in Progress!)
 import os
 
 import obspy
+import numpy as np
 
 
 class Station:
@@ -84,13 +85,22 @@ class Station:
             evlo = float(tr.stats.sac.evlo)
             evdp = float(tr.stats.sac.evdp)
             gcarc = float(tr.stats.sac.gcarc)
+            dist = float(tr.stats.sac.dist)
             az = float(tr.stats.sac.az)
             baz = float(tr.stats.sac.baz)
             o = float(tr.stats.sac.o)
             b = float(tr.stats.sac.b)
             e = float(tr.stats.sac.e)
-            utc = tr.stats.starttime + float(tr.stats.sac.o)
-            utc_str = str(utc)
+            delta = float(tr.stats.sac.delta)
+            starttime_utc = tr.stats.starttime
+            endtime_utc = tr.stats.endtime
+            otime_utc = tr.stats.starttime + float(tr.stats.sac.o)
+            otime_str = "%s%03d%02d%02d%02d" \
+                        %(str(otime_utc.year)[2:],
+                          otime_utc.julday,
+                          otime_utc.hour,
+                          otime_utc.minute,
+                          otime_utc.second)
             tag = f"{knetwk}.{kstnm}.{kcmpnm}"
 
             self.headers = {}
@@ -105,12 +115,17 @@ class Station:
             self.headers['evlo'] = evlo
             self.headers['evdp'] = evdp
             self.headers['gcarc'] = gcarc
+            self.headers['dist'] = dist
             self.headers['az'] = az
             self.headers['baz'] = baz
             self.headers['o'] = o
             self.headers['b'] = b
             self.headers['e'] = e
-            # self.headers['event_utc'] = utc
+            self.headers['delta'] = delta
+            self.headers['starttime_utc'] = starttime_utc
+            self.headers['endtime_utc'] = endtime_utc
+            self.headers['otime_utc'] = otime_utc
+            self.headers['otime_str'] = otime_str
             self.headers['tag'] = tag
         except:
             print(f"Error: could not read sac headers: '{self.sacfile}'")
