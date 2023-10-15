@@ -15,7 +15,7 @@ from core.event import Event
 
 def periods_from_frequencies(freqs):
     """
-    Calculate a sorted list of periods from a list of frequencies
+    Calculate a list of periods from a list of frequencies
 
     Types
     ----------
@@ -27,18 +27,18 @@ def periods_from_frequencies(freqs):
 
     Returns
     ----------
-    periods: a sorted list of periods in seconds
+    periods: list of periods in seconds
     """
     periods = []
     for f in freqs:
         periods.append(1/f)
-    return sorted(periods)
+    return periods
 
 
 
 def frequencies_from_periods(periods):
     """
-    Calculate a sorted list of periods from a list of frequencies
+    Calculate a list of periods from a list of frequencies
 
     Types
     ----------
@@ -50,12 +50,12 @@ def frequencies_from_periods(periods):
 
     Returns
     ----------
-    freqs: sorted list of frequencies in hertz
+    freqs: list of frequencies in hertz
     """
     freqs = []
     for prd in periods:
         freqs.append(1/prd)
-    return sorted(freqs)
+    return freqs
 
 
 
@@ -119,13 +119,33 @@ def apply_filter(timeseries, filt):
 
     Returns
     ---------
-    filtered_tdomain: filtered timeseries in the time domain
+    timeseries_filtered: filtered timeseries in the time domain
     """
     zero_pad = np.zeros(len(timeseries) - len(filt)).tolist()
     filt_zero_padded = np.array(filt.tolist() + zero_pad)
-    filtered_fdomain = np.multiply(fft(timeseries), filt_zero_padded)
-    filtered_tdomain = ifft(filtered_fdomain)
-    return np.real(filtered_tdomain)
+    timeseries_filtered_fdomain = np.multiply(fft(timeseries), filt_zero_padded)
+    timeseries_filtered = ifft(timeseries_filtered_fdomain)
+    return np.real(timeseries_filtered)
+
+
+def calculate_narrow_band_if_good(sta_obj, filt, freq, minvel, maxvel, peak_tol):
+    """
+    Applies a narrow band Gaussian filter considering the 
+    group velocity range and a peak tolerance value if all good!
+
+    """
+    tmin = sta_obj.headers["dist"]/maxvel + sta_obj.headers["o"];
+    tmax = sta_obj.headers["dist"]/minvel + sta_obj.headers["o"];
+    if tmax > np.max(sta_obj.times) or tmin < np.min(sta_obj.times):
+        print(f"Error: Station '{sta_obj.headers['kstnm']}' does not contain enough data (freq={freq}; velocities:[{minvel}, {maxvel}])")
+        return None
+    filtered_timeseries = apply_filter(sta_obj.data, filt)
+    for i, t in enumerate(sta_obj.times):
+        print(t, tmin, tmax)
+        if t < tmin or t > tmax:
+            filtered_timeseries[i] = 0.
+    return filtered_timeseries
+
 
 
 
@@ -230,7 +250,7 @@ if __name__=="__main__":
     ax[0].set_yticks([],[])
     for i in range(nfreqs):
         filt = gaussian_filters[i]
-        filtered = apply_filter(sta.data, filt)
+        filtered = calculate_narrow_band_if_good(sta, filt, freqs[i], mingroupv, maxgroupv, 0.1)
         ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
         ax[i+1].legend(loc='upper right')
         ax[i+1].set_xticks([],[])
