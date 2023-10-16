@@ -9,3 +9,6 @@ id
 *.m~
 *.mat
 .DS_Store
+pygsdf/core/__pycache__/
+
+

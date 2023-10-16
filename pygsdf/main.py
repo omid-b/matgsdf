@@ -3,10 +3,17 @@
 import os
 import sys
 import math
-import numpy as np
-import matplotlib.pyplot as plt
+
+
+
 from matplotlib import cm
 from scipy.fft import fft, ifft, rfft, irfft
+
+# from scipy.signal import hilbert
+# from scipy.signal import find_peaks
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 from core.station import Station
 from core.event import Event
@@ -140,12 +147,42 @@ def calculate_narrow_band_if_good(sta_obj, filt, freq, minvel, maxvel, peak_tol)
         print(f"Error: Station '{sta_obj.headers['kstnm']}' does not contain enough data (freq={freq}; velocities:[{minvel}, {maxvel}])")
         return None
     filtered_timeseries = apply_filter(sta_obj.data, filt)
-    for i, t in enumerate(sta_obj.times):
-        print(t, tmin, tmax)
-        if t < tmin or t > tmax:
-            filtered_timeseries[i] = 0.
-    return filtered_timeseries
 
+    envelop = filtered_timeseries.copy()
+    envelop_indx = []
+    for i, t in enumerate(sta_obj.times):
+        if t < tmin or t > tmax:
+            envelop[i] = 0.
+        else:
+            envelop_indx.append(i)
+    envelop = envelop / np.max(envelop)
+    
+    envelop_diff = np.diff(envelop)
+
+    peaks_indx = []
+    peaks_vals = []
+    for i in range(1, len(envelop_indx)):
+        if  envelop_diff[envelop_indx[i]-1] > 0 \
+            and envelop_diff[envelop_indx[i]] < 0:
+            peaks_indx.append(envelop_indx[i])
+            peaks_vals.append(envelop[envelop_indx[i]])
+
+    max_peak_indx = peaks_indx[np.where(peaks_vals==np.max(peaks_vals))[0][0]]
+    max_peak_val = peaks_vals[np.where(peaks_vals==np.max(peaks_vals))[0][0]]
+
+    peaks_indx_v2 = []
+    peaks_vals_v2 = []
+    peak_tol = 0.01
+    for i in range(1, len(peaks_indx)):
+        if  envelop[peaks_indx[i]] > max_peak_val * peak_tol:
+            peaks_indx_v2.append(envelop_indx[i])
+            peaks_vals_v2.append(envelop[envelop_indx[i]])
+    
+
+    test = envelop.copy()
+    for i in peaks_indx_v2:
+        test[i] = -1
+    return test
 
 
 
@@ -179,8 +216,8 @@ events = [
     os.path.abspath(os.path.join('test_events','08174235631')),
     os.path.abspath(os.path.join('test_events','08178211916'))
 ]
-maxgroupv = 2.5
-mingroupv = 5
+mingroupv = 2.5
+maxgroupv = 5
 
 
 test_event = events[1]
@@ -250,7 +287,7 @@ if __name__=="__main__":
     ax[0].set_yticks([],[])
     for i in range(nfreqs):
         filt = gaussian_filters[i]
-        filtered = calculate_narrow_band_if_good(sta, filt, freqs[i], mingroupv, maxgroupv, 0.1)
+        filtered = calculate_narrow_band_if_good(sta, filt, freqs[i], mingroupv, maxgroupv, 1)
         ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
         ax[i+1].legend(loc='upper right')
         ax[i+1].set_xticks([],[])
