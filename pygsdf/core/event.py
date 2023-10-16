@@ -41,7 +41,7 @@ class Event:
         }
 
     """
-    def __init__(self, event_dir=None, extensions=["sac", "SAC"]):
+    def __init__(self, event_dir=None, extensions=["sac", "SAC"], sort_by_dist = True):
         self.evla = None
         self.evlo = None
         self.evdp = None
@@ -64,10 +64,11 @@ class Event:
         }
         self.extensions = extensions
         self.read_folder(event_dir=event_dir,\
-                         extensions=extensions)
+                         extensions=extensions,\
+                         sort_by_dist=sort_by_dist)
 
 
-    def read_folder(self, event_dir, extensions=None):
+    def read_folder(self, event_dir, extensions=None, sort_by_dist=True):
         """
         Read/append SAC files within an event directory and add to self
 
@@ -92,11 +93,11 @@ class Event:
             print(f"WARNING: No SAC file found in event directory: '{event_dir}'\nSAC file extensions: {' '.join(extensions)}")
             return
         else:
-            self.append(event_sacfiles)
+            self.append(event_sacfiles, sort_by_dist=sort_by_dist)
 
 
 
-    def append(self, sacfiles):
+    def append(self, sacfiles, sort_by_dist=True):
         if type(sacfiles) == str:
             sacfiles = [sacfiles]
         
@@ -124,10 +125,13 @@ class Event:
                 sta.headers['otime_str'] == last_sta.headers['otime_str']:
                 self.stations.append(sta)
             else:
-                print(f"Data skipped: '{sacfile}'")
+                print(f"Data append failed: '{sacfile}'")
                 print(" >> Headers do not match for station '%s' and '%s'." \
                     %(sta.headers['kstnm'], last_sta.headers['kstnm']))
                 continue
+
+        if sort_by_dist:
+            self.sort_by_distance()
 
         self.event_object = {
             "evla": self.evla,
@@ -140,6 +144,12 @@ class Event:
             "otime_str": self.otime_str,
             "stations": self.stations,
         }
+
+    def sort_by_distance(self):
+        stations_dists = []
+        for ista in range(len(self.stations)):
+            stations_dists.append(self.stations[ista].headers["dist"])
+        self.stations = [x for _, x in sorted(zip(stations_dists, self.stations))]
 
     
     def __str__(self):

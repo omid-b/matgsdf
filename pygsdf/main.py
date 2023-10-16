@@ -5,270 +5,174 @@ import sys
 import math
 
 
-
 from matplotlib import cm
-from scipy.fft import fft, ifft, rfft, irfft
-
-# from scipy.signal import hilbert
-# from scipy.signal import find_peaks
-
 import matplotlib.pyplot as plt
 import numpy as np
 
-from core.station import Station
 from core.event import Event
+from core.station import Station
+from core.xcorr import XCorr
 
-########FUNCTIONS########
+from utils.calc import frequencies_from_periods
+from utils.calc import periods_from_frequencies
 
-def periods_from_frequencies(freqs):
-    """
-    Calculate a list of periods from a list of frequencies
+from filtering.isolation import apply_filter
+from filtering.isolation import design_gaussian_filters
+from filtering.isolation import calculate_narrow_band_if_good
 
-    Types
-    ----------
-    list(float): periods, freqs
-
-    Arguments
-    ----------
-    freqs: a list of frequencies in hertz
-
-    Returns
-    ----------
-    periods: list of periods in seconds
-    """
-    periods = []
-    for f in freqs:
-        periods.append(1/f)
-    return periods
-
-
-
-def frequencies_from_periods(periods):
-    """
-    Calculate a list of periods from a list of frequencies
-
-    Types
-    ----------
-    list(float): periods, freqs
-
-    Arguments
-    ----------
-    periods: list of periods in seconds
-
-    Returns
-    ----------
-    freqs: list of frequencies in hertz
-    """
-    freqs = []
-    for prd in periods:
-        freqs.append(1/prd)
-    return freqs
-
-
-
-def design_gaussian_filters(freqs,dt,npts,filter_width_range):
-    """
-    Gaussian filters for a collection of central frequencies
-    to be applied in the frequency domains
-
-    Types
-    ----------
-    list(float):  freqs, faxis, filter_width_range
-    list(list(float)): gaussian_filters
-    int: npts
-    float: dt, minwidth, maxwidth
-
-    Arguments
-    ----------
-    freqs: central frequencies
-    dt: timeseries delta
-    npts: number of points
-    filter_width_range: minimum and maximum filter width range
-    [minwidth, maxwidth] = filter_width_range
-    minwidth: minimum filter width (fraction of central frequency)
-    maxwidth: maximum filter width (fraction of central frequency)
-
-    Returns
-    ----------
-    faxis: frequency axis (horizontal axis) for the designed filters
-    gaussian_filters: list of designed gaussian filters (vertical axis; values in 0-1 range)
-    """
-    freqs = np.array(freqs)
-    faxis = np.arange(0, np.floor(npts/2) + 1, 1) / dt / npts
-
-    [minwidth, maxwidth] = filter_width_range
-    filter_widths = maxwidth - (maxwidth - minwidth) /\
-             np.ptp(freqs) * (freqs - np.min(freqs))
-    gaussian_filters = []
-    for ifreq, freq in enumerate(freqs):
-        gaussian_filters.append(
-            np.exp(-1* np.power(faxis-freq, 2.) / 2. / np.power((filter_widths[ifreq] * freq), 2))
-        )
-    return [faxis, gaussian_filters]
-
-
-def apply_filter(timeseries, filt):
-    """
-    Applies a filter to the given timesseries in the frequency domain
-    Function procedure:
-        1) take timeseries to the frequency domain (fft)
-        2) multiply the spectrum to the given filter
-        3) back to the time domain and return filtered timeseries (ifft)
-
-    Types
-    ---------
-    list(float): timeseries, filt
-
-    Arguments
-    ---------
-    timeseries: timeseries in the time domain (amplitudes only)
-    filt: designed filter in the frequency domain
-
-    Returns
-    ---------
-    timeseries_filtered: filtered timeseries in the time domain
-    """
-    zero_pad = np.zeros(len(timeseries) - len(filt)).tolist()
-    filt_zero_padded = np.array(filt.tolist() + zero_pad)
-    timeseries_filtered_fdomain = np.multiply(fft(timeseries), filt_zero_padded)
-    timeseries_filtered = ifft(timeseries_filtered_fdomain)
-    return np.real(timeseries_filtered)
-
-
-def calculate_narrow_band_if_good(sta_obj, filt, freq, minvel, maxvel, peak_tol):
-    """
-    Applies a narrow band Gaussian filter considering the 
-    group velocity range and a peak tolerance value if all good!
-
-    """
-    tmin = sta_obj.headers["dist"]/maxvel + sta_obj.headers["o"];
-    tmax = sta_obj.headers["dist"]/minvel + sta_obj.headers["o"];
-    if tmax > np.max(sta_obj.times) or tmin < np.min(sta_obj.times):
-        print(f"Error: Station '{sta_obj.headers['kstnm']}' does not contain enough data (freq={freq}; velocities:[{minvel}, {maxvel}])")
-        return None
-    filtered_timeseries = apply_filter(sta_obj.data, filt)
-
-    envelop = filtered_timeseries.copy()
-    envelop_indx = []
-    for i, t in enumerate(sta_obj.times):
-        if t < tmin or t > tmax:
-            envelop[i] = 0.
-        else:
-            envelop_indx.append(i)
-    envelop = envelop / np.max(envelop)
-    
-    envelop_diff = np.diff(envelop)
-
-    peaks_indx = []
-    peaks_vals = []
-    for i in range(1, len(envelop_indx)):
-        if  envelop_diff[envelop_indx[i]-1] > 0 \
-            and envelop_diff[envelop_indx[i]] < 0:
-            peaks_indx.append(envelop_indx[i])
-            peaks_vals.append(envelop[envelop_indx[i]])
-
-    max_peak_indx = peaks_indx[np.where(peaks_vals==np.max(peaks_vals))[0][0]]
-    max_peak_val = peaks_vals[np.where(peaks_vals==np.max(peaks_vals))[0][0]]
-
-    peaks_indx_v2 = []
-    peaks_vals_v2 = []
-    peak_tol = 0.01
-    for i in range(1, len(peaks_indx)):
-        if  envelop[peaks_indx[i]] > max_peak_val * peak_tol:
-            peaks_indx_v2.append(envelop_indx[i])
-            peaks_vals_v2.append(envelop[envelop_indx[i]])
-    
-
-    test = envelop.copy()
-    for i in peaks_indx_v2:
-        test[i] = -1
-    return test
-
-
-
-def groupv_fit(dist,time,snr,mingroupv,maxgroupv):
-    """
-    Apply weighted least square polynomial fitting to the data
-
-    Types
-    -------
-    XXX
-
-    Arguments
-    -------
-    XXX
-
-    Returns
-    -------
-    XXX
-    
-    """
-    pass
-
-
-
-##########################
 
 #========Adjustable Parameters=========#
-periods = [20, 25, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200]
+periods = [20, 25, 30, 40, 50, 60, 80, 100, 120, 140, 160]
 filter_width_range = [0.06, 0.1]
 events = [
-    os.path.abspath(os.path.join('test_events','08174235631')),
-    os.path.abspath(os.path.join('test_events','08178211916'))
+    os.path.abspath(os.path.join('_datasets', 'test_events','08174235631')),
+    os.path.abspath(os.path.join('_datasets', 'test_events','08178211916'))
 ]
 mingroupv = 2.5
 maxgroupv = 5
 
-
+test_egfs = os.path.join("_datasets", "test_egfs")
+test_egfs2 = os.path.join("_datasets", "test_egfs_2")
 test_event = events[1]
 test_sacfile = os.path.join(events[1], "08178211916_117A.LHZ")
+
+# periods/frequencies
+periods = sorted(periods)
+freqs = frequencies_from_periods(periods)
+nfreqs = len(freqs)
+
+# test station read
+#------------------
+sta = Station(test_sacfile)
 #======================================#
 
+###### TEST FUNCTIONS #######
 
-if __name__=="__main__":
+def test_plot_egfs():
+    # read and plot a EGFs (XCorr object)
+    #-----------------------------
+    egfs = XCorr(test_egfs)
+    print("----test_egfs----")
+    print("cmp: ", egfs.component)
+    print("tmin: ", egfs.tmin)
+    print("tmax: ", egfs.tmax)
+    print("delta: ", egfs.delta)
+    print("min_dist: ", egfs.min_dist)
+    print("max_dist: ", egfs.max_dist)
+    print("avg_dist: ", egfs.avg_dist)
+    print("sym: ", egfs.sym)
+
+    nsta = len(egfs.stations)
+    fig, ax = plt.subplots(nsta)
+    fig.set_figwidth(8*0.8)
+    fig.set_figheight(10*0.8)
+    for ista in range(nsta):
+        ax[ista].plot(egfs.stations[ista].times,\
+                   egfs.stations[ista].data,\
+                   label="%.2f km" %(egfs.stations[ista].headers['dist']))
+        ax[ista].legend(loc="upper right")
+        ax[ista].set_yticks([],[])
+        ax[ista].set_xlim([-500, 500]) # test_egfs
+    ax[0].set_title("EGFs sorted by distance")
+
+    egfs = XCorr(test_egfs2, component="ZZ")
+    print("----test_egfs2----")
+    print("cmp: ", egfs.component)
+    print("tmin: ", egfs.tmin)
+    print("tmax: ", egfs.tmax)
+    print("delta: ", egfs.delta)
+    print("min_dist: ", egfs.min_dist)
+    print("max_dist: ", egfs.max_dist)
+    print("avg_dist: ", egfs.avg_dist)
+    print("sym: ", egfs.sym)
+    nsta = len(egfs.stations)
+    fig, ax = plt.subplots(nsta)
+    fig.set_figwidth(8*0.8)
+    fig.set_figheight(10*0.8)
+    for ista in range(nsta):
+        ax[ista].plot(egfs.stations[ista].times,\
+                   egfs.stations[ista].data,\
+                   label="%.2f km" %(egfs.stations[ista].headers['dist']))
+        ax[ista].legend(loc="upper right")
+        ax[ista].set_yticks([],[])
+        # ax[ista].set_xlim([-500, 500]) # test_egfs
+        ax[ista].set_xlim([0, 5]) # test_egfs2
+    ax[0].set_title("EGFs sorted by distance")
+    plt.show()
 
 
-    # periods/frequencies
-    periods = sorted(periods)
-    freqs = frequencies_from_periods(periods)
-    nfreqs = len(freqs)
+def test_plot_event():
+    # read and plot a single event
+    #-----------------------------
+    event = Event(test_event, extensions=["LHZ"], sort_by_dist=True)
+    # nsta = len(event.stations)
+    nsta = len(event.stations) - 25 # just for test!
+    fig, ax = plt.subplots(nsta)
+    fig.set_figwidth(8*0.8)
+    fig.set_figheight(10*0.8)
+    for ista in range(nsta):
+        ax[ista].plot(event.stations[ista].times,\
+                   event.stations[ista].data,\
+                   label="%.2f km" %(event.stations[ista].headers['dist']))
+        ax[ista].legend(loc="upper right")
+        ax[ista].set_yticks([],[])
+        # ax[ista].set_xlim([500, 1000])
+    ax[0].set_title("Event data sorted by distance")
+    plt.show()
 
-    # test station read
-    #------------------
-    sta = Station(test_sacfile)
+
+    
+    
+def test_narrow_band_gaussians():
+    # design and plot narrow band gaussian filters
+    # ------------------------------
     fax, gaussian_filters = design_gaussian_filters(freqs,
                             sta.headers['delta'],
                             len(sta.data),
                             filter_width_range)
+    fig = plt.figure(figsize=(10,5))
+    ax = fig.add_subplot(111)
+    for i in range(nfreqs):
+        plt.plot(fax, gaussian_filters[i], label=f"{periods[i]} s")
+    plt.legend(loc="best")  
+    plt.xlabel("Frequency (hertz)")  
+    plt.ylabel("Filter Amplitude")  
+    ax.set_title("Gaussian Filters")
+    plt.xlim([0, 0.3])
+    plt.tight_layout()
+    plt.show()
 
 
-    # plot designed gaussian filters
-    # ------------------------------
-    # fig = plt.figure(figsize=(10,5))
-    # ax = fig.add_subplot(111)
-    # for i in range(nfreqs):
-    #     plt.plot(fax, gaussian_filters[i])
-    # ax.set_title("Gaussian Filters")
-    # plt.xlim([0, 0.3])
-
+def test_narrow_band_filtered():
+    fax, gaussian_filters = design_gaussian_filters(freqs,
+                            sta.headers['delta'],
+                            len(sta.data),
+                            filter_width_range)
     # plot original versus narrow-band Gaussian filtered
     # --------------------------------------------------
-    # fig, ax = plt.subplots(nfreqs+1)
-    # fig.set_figwidth(6*0.8)
-    # fig.set_figheight(8*0.8)
-    # ax[0].plot(sta.times, sta.data, label='Unfiltered')
-    # ax[0].legend(loc='upper right')
-    # ax[0].set_xticks([],[])
-    # ax[0].set_yticks([],[])
-    # for i in range(nfreqs):
-    #     filt = gaussian_filters[i]
-    #     filtered = apply_filter(sta.data, filt)
-    #     ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
-    #     ax[i+1].legend(loc='upper right')
-    #     ax[i+1].set_xticks([],[])
-    #     ax[i+1].set_yticks([],[])
-    # plt.tight_layout()
+    fig, ax = plt.subplots(nfreqs+1)
+    fig.set_figwidth(6*0.8)
+    fig.set_figheight(8*0.8)
+    ax[0].plot(sta.times, sta.data, label='Unfiltered')
+    ax[0].legend(loc='upper right')
+    ax[0].set_xticks([],[])
+    ax[0].set_yticks([],[])
+    for i in range(nfreqs):
+        filt = gaussian_filters[i]
+        filtered = apply_filter(sta.data, filt)
+        ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
+        ax[i+1].legend(loc='upper right')
+        ax[i+1].set_xticks([],[])
+        ax[i+1].set_yticks([],[])
+    plt.tight_layout()
+    plt.show()
 
+
+def test_isolated_filtered():
+    fax, gaussian_filters = design_gaussian_filters(freqs,
+                            sta.headers['delta'],
+                            len(sta.data),
+                            filter_width_range)
     # plot original versus final filtered seismograms
     # -----------------------------------------------
     tmin = sta.headers["dist"]/maxgroupv + sta.headers["o"];
@@ -293,21 +197,16 @@ if __name__=="__main__":
         ax[i+1].set_xticks([],[])
         ax[i+1].set_yticks([],[])
     plt.tight_layout()
-
     plt.show()
-    exit(0)
 
 
 
-
-    # test events
-    evt = Event(extensions=["LHZ"])
-    evt.read_folder(test_event)
-    # evt.read_folder(test_event2, extensions=["LHZ"])
-
-
-    # design gaussian filters
-    fax, gaussian_filters = design_gaussian_filters(freqs, 1, 3000, 0.06, 0.10)
+if __name__=="__main__":
+    test_plot_egfs()
+    test_plot_event()
+    test_narrow_band_gaussians()
+    test_narrow_band_filtered()
+    test_isolated_filtered()
 
 
 

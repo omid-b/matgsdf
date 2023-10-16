@@ -9,6 +9,9 @@ id
 *.m~
 *.mat
 .DS_Store
-pygsdf/core/__pycache__/
-
-
+__pycache__/
+build/
+dist/
+sdist/
+*.egg-info/
+*.egg
