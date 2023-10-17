@@ -14,7 +14,7 @@ from scipy.fft import fft, ifft, rfft, irfft
 # from scipy.signal import find_peaks
 
 
-def apply_filter(timeseries, filt):
+def apply_filter_fdomain(timeseries, filt):
     """
     Applies a filter to the given timesseries in the frequency domain
     Function procedure:
@@ -42,8 +42,31 @@ def apply_filter(timeseries, filt):
     return np.real(timeseries_filtered)
 
 
+def apply_filter_tdomain(timeseries, filt):
+    """
+    Applies a filter to the given timesseries in the time domain
+    Function procedure (single step):
+        1) multiply timeseries by the filter in time domain
+        2) return the filtered timeseries
 
-def design_gaussian_filters(freqs,dt,npts,filter_width_range):
+    Types
+    ---------
+    list(float): timeseries, filt
+
+    Arguments
+    ---------
+    timeseries: timeseries in the time domain (amplitudes only)
+    filt: designed filter in the frequency domain
+
+    Returns
+    ---------
+    timeseries_filtered: filtered timeseries in the time domain
+    """
+    timeseries_filtered = np.multiply(timeseries, filt)
+    return timeseries_filtered
+
+
+def design_gaussians(freqs,dt,npts,filter_width_range):
     """
     Gaussian filters for a collection of central frequencies
     to be applied in the frequency domains
@@ -97,7 +120,7 @@ def calculate_narrow_band_if_good(sta_obj, filt, freq, minvel, maxvel, peak_tol)
     if tmax > np.max(sta_obj.times) or tmin < np.min(sta_obj.times):
         print(f"Error: Station '{sta_obj.headers['kstnm']}' does not contain enough data (freq={freq}; velocities:[{minvel}, {maxvel}])")
         return None
-    filtered_timeseries = apply_filter(sta_obj.data, filt)
+    filtered_timeseries = apply_filter_fdomain(sta_obj.data, filt)
 
     envelop = filtered_timeseries.copy()
     envelop_indx = []
@@ -134,6 +157,59 @@ def calculate_narrow_band_if_good(sta_obj, filt, freq, minvel, maxvel, peak_tol)
     for i in peaks_indx_v2:
         test[i] = -1
     return test
+
+
+
+def design_hanning_window(sta_obj, tmin, tmax, taper_width):
+    """
+    Applies a hanning-type windowing to the 
+    input station object
+
+    Arguments
+    ---------
+    sta_obj: Station object
+    tmin: minimum time that data tapers to zero
+    tmax: maximum time that data tapers to zero
+    taper_width: taper width in seconds
+    nhann: number of points required to build a 
+           full hanning taper function (odd number)
+
+    Returns
+    --------
+    filt: output designed hanning taper window filter
+    """
+    # first, design box filter
+    filt = np.zeros(len(sta_obj.data))
+    for itime, time in enumerate(sta_obj.times):
+        if time >= tmin and time <= tmax:
+            filt[itime] = 1.0
+            max_index = itime
+    # design hanning taper
+    nhann = int((taper_width * 2) / sta_obj.headers['delta'])
+    if nhann % 2 == 0:
+        nhann += 1
+    full_hanning = np.hanning(nhann)
+    half_hanning = []
+    for i in range(nhann):
+        half_hanning.append(full_hanning[i])
+        if full_hanning[i] == 1.0:
+            break
+    # left hanning taper
+    ihann = 0
+    nhann = int(np.floor(nhann / 2)) + 1
+    for itime, time in enumerate(sta_obj.times):
+        if time >= tmin and ihann < nhann:
+            filt[itime] = half_hanning[ihann]
+            ihann += 1
+    # right hanning taper
+    for ihann in range(nhann):
+        indx = max_index - ihann
+        filt[indx] = half_hanning[ihann]
+    return filt
+
+
+
+
 
 
 def calculate_isolation_filters(sta_obj, designed_filters, frequencies,\
