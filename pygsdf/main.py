@@ -222,12 +222,40 @@ def test_isolation_taper():
     plt.show()
 
 
+def test_isolation_taper_narrow_bands():
+    tmin = sta.headers["dist"]/maxgroupv + sta.headers["o"];
+    tmax = sta.headers["dist"]/mingroupv + sta.headers["o"];
+    taper_width = 0.1 * (tmax - tmin) # 10%
+    hanning_filt = design_hanning_window(sta, tmin, tmax, taper_width)
+    fax, gaussian_filters = design_gaussians(freqs,
+                            sta.headers['delta'],
+                            len(sta.data),
+                            filter_width_range)
+
+    fig, ax = plt.subplots(nfreqs+1)
+    fig.set_figwidth(6*0.8)
+    fig.set_figheight(8*0.8)
+    ax[0].plot(sta.times, sta.data, label='Unfiltered')
+    ax[0].legend(loc='upper right')
+    ax[0].set_xticks([],[])
+    ax[0].set_yticks([],[])
+    for i in range(nfreqs):
+        filtered = apply_filter_fdomain(sta.data, gaussian_filters[i])
+        filtered = apply_filter_tdomain(filtered, hanning_filt)
+        ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
+        ax[i+1].legend(loc='upper right')
+        ax[i+1].set_xticks([],[])
+        ax[i+1].set_yticks([],[])
+    plt.tight_layout()
+    plt.show()
+
 if __name__=="__main__":
     # test_plot_egfs()
     # test_plot_event()
     # test_narrow_band_gaussians()
     # test_narrow_band_filtered()
-    test_isolation_taper()
+    # test_isolation_taper()
+    test_isolation_taper_narrow_bands()
 
 
 
