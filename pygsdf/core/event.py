@@ -18,7 +18,7 @@ import os
 import obspy
 import numpy as np
 
-from .station import Station
+from .sac import Sac
 
 
 class Event:
@@ -50,7 +50,7 @@ class Event:
         self.endtime_utc = None
         self.otime_utc = None
         self.otime_str = None
-        self.stations = []
+        self.sacs = []
         self.event_object = {
             "evla": self.evla,
             "evlo": self.evlo,
@@ -60,7 +60,7 @@ class Event:
             "endtime_utc": self.endtime_utc,
             "otime_utc": self.otime_utc,
             "otime_str": self.otime_str,
-            "stations": self.stations,
+            "sacs": self.sacs,
         }
         self.extensions = extensions
         self.read_folder(event_dir=event_dir,\
@@ -102,32 +102,32 @@ class Event:
             sacfiles = [sacfiles]
         
         for sacfile in sacfiles:
-            sta = Station(sacfile)
-            if not len(self.stations):
-                self.evla = sta.headers['evla']
-                self.evlo = sta.headers['evlo']
-                self.evdp = sta.headers['evdp']
-                self.delta = sta.headers['delta']
-                self.starttime_utc = sta.headers['starttime_utc']
-                self.endtime_utc = sta.headers['endtime_utc']
-                self.otime_utc = sta.headers['otime_utc']
-                self.otime_str = sta.headers['otime_str']
-                self.stations.append(sta)
+            sac = Sac(sacfile)
+            if not len(self.sacs):
+                self.evla = sac.headers['evla']
+                self.evlo = sac.headers['evlo']
+                self.evdp = sac.headers['evdp']
+                self.delta = sac.headers['delta']
+                self.starttime_utc = sac.headers['starttime_utc']
+                self.endtime_utc = sac.headers['endtime_utc']
+                self.otime_utc = sac.headers['otime_utc']
+                self.otime_str = sac.headers['otime_str']
+                self.sacs.append(sac)
 
-            last_sta = self.stations[-1]
-            if  sta.headers['evla'] == last_sta.headers['evla'] and \
-                sta.headers['evlo'] == last_sta.headers['evlo'] and \
-                sta.headers['evdp'] == last_sta.headers['evdp'] and \
-                sta.headers['delta'] == last_sta.headers['delta'] and \
-                sta.headers['starttime_utc'] == last_sta.headers['starttime_utc'] and \
-                sta.headers['endtime_utc'] == last_sta.headers['endtime_utc'] and \
-                sta.headers['otime_utc'] == last_sta.headers['otime_utc'] and \
-                sta.headers['otime_str'] == last_sta.headers['otime_str']:
-                self.stations.append(sta)
+            last_sac = self.sacs[-1]
+            if  sac.headers['evla'] == last_sac.headers['evla'] and \
+                sac.headers['evlo'] == last_sac.headers['evlo'] and \
+                sac.headers['evdp'] == last_sac.headers['evdp'] and \
+                sac.headers['delta'] == last_sac.headers['delta'] and \
+                sac.headers['starttime_utc'] == last_sac.headers['starttime_utc'] and \
+                sac.headers['endtime_utc'] == last_sac.headers['endtime_utc'] and \
+                sac.headers['otime_utc'] == last_sac.headers['otime_utc'] and \
+                sac.headers['otime_str'] == last_sac.headers['otime_str']:
+                self.sacs.append(sac)
             else:
                 print(f"Data append failed: '{sacfile}'")
                 print(" >> Headers do not match for station '%s' and '%s'." \
-                    %(sta.headers['kstnm'], last_sta.headers['kstnm']))
+                    %(sac.headers['kstnm'], last_sac.headers['kstnm']))
                 continue
 
         if sort_by_dist:
@@ -142,14 +142,14 @@ class Event:
             "endtime_utc": self.endtime_utc,
             "otime_utc": self.otime_utc,
             "otime_str": self.otime_str,
-            "stations": self.stations,
+            "stations": self.sacs,
         }
 
     def sort_by_distance(self):
         stations_dists = []
-        for ista in range(len(self.stations)):
-            stations_dists.append(self.stations[ista].headers["dist"])
-        self.stations = [x for _, x in sorted(zip(stations_dists, self.stations))]
+        for ista in range(len(self.sacs)):
+            stations_dists.append(self.sacs[ista].headers["dist"])
+        self.sacs = [x for _, x in sorted(zip(stations_dists, self.sacs))]
 
     
     def __str__(self):

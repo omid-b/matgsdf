@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from core.event import Event
-from core.station import Station
+from core.sac import Sac
 from core.xcorr import XCorr
 
 from utils.calc import frequencies_from_periods
@@ -19,8 +19,8 @@ from utils.calc import periods_from_frequencies
 from filtering.isolation import apply_filter_fdomain
 from filtering.isolation import apply_filter_tdomain
 from filtering.isolation import calculate_narrow_band_if_good
-from filtering.isolation import design_gaussians
-from filtering.isolation import design_hanning_window
+from filtering.isolation import design_fdomain_gaussians
+from filtering.isolation import design_tdomain_taper
 
 #========Adjustable Parameters=========#
 periods = [20, 25, 30, 40, 50, 60, 80, 100, 120, 140, 160]
@@ -44,7 +44,8 @@ nfreqs = len(freqs)
 
 # test station read
 #------------------
-sta = Station(test_sacfile)
+sac = Sac(test_sacfile)
+
 #======================================#
 
 ###### TEST FUNCTIONS #######
@@ -63,14 +64,14 @@ def test_plot_egfs():
     print("avg_dist: ", egfs.avg_dist)
     print("sym: ", egfs.sym)
 
-    nsta = len(egfs.stations)
+    nsta = len(egfs.sacs)
     fig, ax = plt.subplots(nsta)
     fig.set_figwidth(8*0.8)
     fig.set_figheight(10*0.8)
     for ista in range(nsta):
-        ax[ista].plot(egfs.stations[ista].times,\
-                   egfs.stations[ista].data,\
-                   label="%.2f km" %(egfs.stations[ista].headers['dist']))
+        ax[ista].plot(egfs.sacs[ista].times,\
+                   egfs.sacs[ista].data,\
+                   label="%.2f km" %(egfs.sacs[ista].headers['dist']))
         ax[ista].legend(loc="upper right")
         ax[ista].set_yticks([],[])
         ax[ista].set_xlim([-500, 500]) # test_egfs
@@ -86,14 +87,14 @@ def test_plot_egfs():
     print("max_dist: ", egfs.max_dist)
     print("avg_dist: ", egfs.avg_dist)
     print("sym: ", egfs.sym)
-    nsta = len(egfs.stations)
+    nsta = len(egfs.sacs)
     fig, ax = plt.subplots(nsta)
     fig.set_figwidth(8*0.8)
     fig.set_figheight(10*0.8)
     for ista in range(nsta):
-        ax[ista].plot(egfs.stations[ista].times,\
-                   egfs.stations[ista].data,\
-                   label="%.2f km" %(egfs.stations[ista].headers['dist']))
+        ax[ista].plot(egfs.sacs[ista].times,\
+                   egfs.sacs[ista].data,\
+                   label="%.2f km" %(egfs.sacs[ista].headers['dist']))
         ax[ista].legend(loc="upper right")
         ax[ista].set_yticks([],[])
         # ax[ista].set_xlim([-500, 500]) # test_egfs
@@ -106,15 +107,15 @@ def test_plot_event():
     # read and plot a single event
     #-----------------------------
     event = Event(test_event, extensions=["LHZ"], sort_by_dist=True)
-    # nsta = len(event.stations)
-    nsta = len(event.stations) - 25 # just for test!
+    # nsta = len(event.sacs)
+    nsta = len(event.sacs) - 25 # just for test!
     fig, ax = plt.subplots(nsta)
     fig.set_figwidth(8*0.8)
     fig.set_figheight(10*0.8)
     for ista in range(nsta):
-        ax[ista].plot(event.stations[ista].times,\
-                   event.stations[ista].data,\
-                   label="%.2f km" %(event.stations[ista].headers['dist']))
+        ax[ista].plot(event.sacs[ista].times,\
+                   event.sacs[ista].data,\
+                   label="%.2f km" %(event.sacs[ista].headers['dist']))
         ax[ista].legend(loc="upper right")
         ax[ista].set_yticks([],[])
         # ax[ista].set_xlim([500, 1000])
@@ -124,12 +125,12 @@ def test_plot_event():
 
     
     
-def test_narrow_band_gaussians():
+def test_narrow_band_gaussian_filter_design():
     # design and plot narrow band gaussian filters
     # ------------------------------
-    fax, gaussian_filters = design_gaussians(freqs,
-                            sta.headers['delta'],
-                            len(sta.data),
+    fax, gaussian_filters = design_fdomain_gaussians(freqs,
+                            sac.headers['delta'],
+                            len(sac.data),
                             filter_width_range)
     fig = plt.figure(figsize=(10,5))
     ax = fig.add_subplot(111)
@@ -144,24 +145,24 @@ def test_narrow_band_gaussians():
     plt.show()
 
 
-def test_narrow_band_filtered():
-    fax, gaussian_filters = design_gaussians(freqs,
-                            sta.headers['delta'],
-                            len(sta.data),
+def test_narrow_band_filtered_seisomgrams():
+    fax, gaussian_filters = design_fdomain_gaussians(freqs,
+                            sac.headers['delta'],
+                            len(sac.data),
                             filter_width_range)
     # plot original versus narrow-band Gaussian filtered
     # --------------------------------------------------
     fig, ax = plt.subplots(nfreqs+1)
     fig.set_figwidth(6*0.8)
     fig.set_figheight(8*0.8)
-    ax[0].plot(sta.times, sta.data, label='Unfiltered')
+    ax[0].plot(sac.times, sac.data, label='Unfiltered')
     ax[0].legend(loc='upper right')
     ax[0].set_xticks([],[])
     ax[0].set_yticks([],[])
     for i in range(nfreqs):
         filt = gaussian_filters[i]
-        filtered = apply_filter_fdomain(sta.data, filt)
-        ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
+        filtered = apply_filter_fdomain(sac.data, filt)
+        ax[i+1].plot(sac.times, filtered, label=f'{periods[i]} s')
         ax[i+1].legend(loc='upper right')
         ax[i+1].set_xticks([],[])
         ax[i+1].set_yticks([],[])
@@ -170,30 +171,30 @@ def test_narrow_band_filtered():
 
 
 # def test_isolated_filtered():
-#     fax, gaussian_filters = design_gaussians(freqs,
-#                             sta.headers['delta'],
-#                             len(sta.data),
+#     fax, gaussian_filters = design_fdomain_gaussians(freqs,
+#                             sac.headers['delta'],
+#                             len(sac.data),
 #                             filter_width_range)
 #     # plot original versus final filtered seismograms
 #     # -----------------------------------------------
-#     tmin = sta.headers["dist"]/maxgroupv + sta.headers["o"];
-#     tmax = sta.headers["dist"]/mingroupv + sta.headers["o"];
-#     if tmax > np.max(sta.times) or tmin < np.min(sta.times):
-#         print(f"Error: Station '{sta.headers['kstnm']}' does not contain enough data")
+#     tmin = sac.headers["dist"]/maxgroupv + sac.headers["o"];
+#     tmax = sac.headers["dist"]/mingroupv + sac.headers["o"];
+#     if tmax > np.max(sac.times) or tmin < np.min(sac.times):
+#         print(f"Error: Station '{sac.headers['kstnm']}' does not contain enough data")
 #         exit(-1)
 
 #     fig, ax = plt.subplots(nfreqs+1)
 #     fig.set_figwidth(8*0.8)
 #     fig.set_figheight(8*0.8)
-#     ax[0].plot(sta.times, sta.data, label='Unfiltered')
+#     ax[0].plot(sac.times, sac.data, label='Unfiltered')
 #     ax[0].scatter([tmin, tmax],[0, 0], c='red')
 #     ax[0].legend(loc='upper right')
 #     ax[0].set_xticks([],[])
 #     ax[0].set_yticks([],[])
 #     for i in range(nfreqs):
 #         filt = gaussian_filters[i]
-#         filtered = calculate_narrow_band_if_good(sta, filt, freqs[i], mingroupv, maxgroupv, 1)
-#         ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
+#         filtered = calculate_narrow_band_if_good(sac, filt, freqs[i], mingroupv, maxgroupv, 1)
+#         ax[i+1].plot(sac.times, filtered, label=f'{periods[i]} s')
 #         ax[i+1].legend(loc='upper right')
 #         ax[i+1].set_xticks([],[])
 #         ax[i+1].set_yticks([],[])
@@ -202,47 +203,48 @@ def test_narrow_band_filtered():
 
 
 
-def test_isolation_taper():
-    tmin = sta.headers["dist"]/maxgroupv + sta.headers["o"];
-    tmax = sta.headers["dist"]/mingroupv + sta.headers["o"];
+def test_tdomain_tapering():
+    tmin = sac.headers["dist"]/maxgroupv + sac.headers["o"];
+    tmax = sac.headers["dist"]/mingroupv + sac.headers["o"];
     taper_width = 0.1 * (tmax - tmin) # 10%
-    filt = design_hanning_window(sta, tmin, tmax, taper_width)
-    filt_data = apply_filter_tdomain(sta.data, filt)
+    filt = design_tdomain_taper(sac, tmin, tmax, taper_width)
+    filt_data = apply_filter_tdomain(sac.data, filt)
     fig, ax = plt.subplots(3)
     fig.set_figwidth(8*0.8)
     fig.set_figheight(5*0.8)
-    ax[0].plot(sta.times, sta.data, label='Original', zorder=1)
+    ax[0].plot(sac.times, sac.data, label='Original', zorder=1)
     ax[0].scatter([tmin, tmax], [0,0], c='red', zorder=2)
     ax[0].legend(loc='best')
-    ax[1].plot(sta.times, filt, label='Hanning taper: %.0f s' %(taper_width))
+    ax[1].plot(sac.times, filt, label='Hanning taper: %.0f s' %(taper_width))
     ax[1].legend(loc='best')
-    ax[2].plot(sta.times, filt_data, label='Filtered Data')
+    ax[2].plot(sac.times, filt_data, label='Filtered Data')
     ax[2].legend(loc='best')
     plt.tight_layout()
     plt.show()
 
 
-def test_isolation_taper_narrow_bands():
-    tmin = sta.headers["dist"]/maxgroupv + sta.headers["o"];
-    tmax = sta.headers["dist"]/mingroupv + sta.headers["o"];
+def test_multichannel_isolation_filtering():
+    tmin = sac.headers["dist"]/maxgroupv + sac.headers["o"];
+    tmax = sac.headers["dist"]/mingroupv + sac.headers["o"];
+
     taper_width = 0.1 * (tmax - tmin) # 10%
-    hanning_filt = design_hanning_window(sta, tmin, tmax, taper_width)
-    fax, gaussian_filters = design_gaussians(freqs,
-                            sta.headers['delta'],
-                            len(sta.data),
+    hanning_filt = design_tdomain_taper(sac, tmin, tmax, taper_width)
+    fax, gaussian_filters = design_fdomain_gaussians(freqs,
+                            sac.headers['delta'],
+                            len(sac.data),
                             filter_width_range)
 
     fig, ax = plt.subplots(nfreqs+1)
     fig.set_figwidth(6*0.8)
     fig.set_figheight(8*0.8)
-    ax[0].plot(sta.times, sta.data, label='Unfiltered')
+    ax[0].plot(sac.times, sac.data, label='Unfiltered')
     ax[0].legend(loc='upper right')
     ax[0].set_xticks([],[])
     ax[0].set_yticks([],[])
     for i in range(nfreqs):
-        filtered = apply_filter_fdomain(sta.data, gaussian_filters[i])
+        filtered = apply_filter_fdomain(sac.data, gaussian_filters[i])
         filtered = apply_filter_tdomain(filtered, hanning_filt)
-        ax[i+1].plot(sta.times, filtered, label=f'{periods[i]} s')
+        ax[i+1].plot(sac.times, filtered, label=f'{periods[i]} s')
         ax[i+1].legend(loc='upper right')
         ax[i+1].set_xticks([],[])
         ax[i+1].set_yticks([],[])
@@ -252,10 +254,10 @@ def test_isolation_taper_narrow_bands():
 if __name__=="__main__":
     # test_plot_egfs()
     # test_plot_event()
-    # test_narrow_band_gaussians()
-    # test_narrow_band_filtered()
-    # test_isolation_taper()
-    test_isolation_taper_narrow_bands()
+    # test_narrow_band_gaussian_filter_design()
+    # test_narrow_band_filtered_seisomgrams()
+    # test_tdomain_tapering()
+    # test_multichannel_isolation_filtering()
 
 
 

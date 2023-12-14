@@ -19,7 +19,7 @@ import obspy
 import numpy as np
 
 
-class Station:
+class Sac:
     """
     Class to read and process seismic data (SAC format)
 
@@ -38,7 +38,7 @@ class Station:
         self.headers = None
         self.filtered = None
         self.frequencies = None
-        self.station_object = {
+        self.sac_object = {
             "data": self.data,
             "times": self.times,
             "headers": self.headers,
@@ -55,6 +55,25 @@ class Station:
             self.event_headers = event_headers
         if self.sacfile:
             self.read(self.sacfile)
+
+
+    def append(times, data, headers):
+        if len(times) != len(data):
+            print("Error: number of elements in 'times' and 'data' do not match!")
+            exit(1)
+        if type(headers) != dict:
+            print("Error: appended 'headers' must be a type 'dict'.")
+            exit(1)
+        all_headers = [
+            'tag', 'knetwk','kstnm', 'kcmpnm', 'stla', 'stlo', 'stel',
+            'evla', 'evlo', 'evdp', 'gcarc', 'dist', 'az', 'baz', 'o',
+            'b', 'e', 'delta', 'starttime_utc', 'endtime_utc', 'otime_utc',
+            'otime_str'
+        ]
+        required_headers = [
+            'knetwk','kstnm', 'kcmpnm', 'stla', 'stlo', 'stel'
+        ]
+
 
 
     def read(self, sacfile):
@@ -180,7 +199,7 @@ class Station:
             print(f"Error: could not read sac header '{e}': '{self.sacfile}'")
             exit(-1)
 
-        self.station_object = {
+        self.sac_object = {
             "data": self.data,
             "times": self.times,
             "headers": self.headers,
@@ -212,7 +231,7 @@ class Station:
 
 
     def __repr__(self):
-        return self.station_object
+        return self.sac_object
 
 
     def get_data(self):

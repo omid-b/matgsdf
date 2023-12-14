@@ -27,11 +27,11 @@ import os
 import obspy
 import numpy as np
 
-from .station import Station
+from .sac import Sac
 
 class XCorr:
     """
-    Seismic SAC file XCorr class is to store Station classes
+    Seismic SAC file XCorr class is to store Sac classes
     with the consistent XCorr information.
 
     XCorr (cross correlogram) object
@@ -46,10 +46,10 @@ class XCorr:
             "max_dist":  <float: maximum inter-station distance (km)> 
             "avg_dist":  <float: average inter-station distance (km)> 
             "sym":   <bool: all cross corellograms are symmetrized>
-            "stations": <list(Station objects)>
+            "sacs": <list(Sac objects)>
         }
 
-        component is read from header 'kcmpnm' and must be consistent throughout all stations
+        component is read from header 'kcmpnm' and must be consistent throughout all sacs
 
     """
     def __init__(self, xcorr_dir=None, extensions=["sac", "SAC"],
@@ -62,7 +62,7 @@ class XCorr:
         self.max_dist = None
         self.avg_dist = None
         self.sym = None
-        self.stations = []
+        self.sacs = []
         self.egf_object = {
             "component": self.component,
             "tmin": self.tmin,
@@ -72,7 +72,7 @@ class XCorr:
             "max_dist": self.max_dist,
             "avg_dist": self.avg_dist,
             "sym": self.sym,
-            "stations": self.stations,
+            "sacs": self.sacs,
         }
         self.extensions = extensions
         self.read_folder(xcorr_dir=xcorr_dir,\
@@ -114,27 +114,27 @@ class XCorr:
         
 
         for sacfile in sacfiles:
-            sta = Station(sacfile, is_xcorr=True, component=self.component)
-            sta.times += sta.headers['b'] # neccessary for cross correlation data!
-            if not len(self.stations):
-                self.component = sta.headers['kcmpnm']
-                self.tmin = sta.headers['b']
-                self.tmax = sta.headers['e']
-                self.delta = sta.headers['delta']
-                self.stations.append(sta)
+            sac = Sac(sacfile, is_xcorr=True, component=self.component)
+            sac.times += sac.headers['b'] # neccessary for cross correlation data!
+            if not len(self.sacs):
+                self.component = sac.headers['kcmpnm']
+                self.tmin = sac.headers['b']
+                self.tmax = sac.headers['e']
+                self.delta = sac.headers['delta']
+                self.sacs.append(sac)
 
-            last_sta = self.stations[-1]
-            if  sta.headers['kcmpnm'] == last_sta.headers['kcmpnm'] and \
-                sta.times[0] == last_sta.times[0] and \
-                sta.times[-1] == last_sta.times[-1] and \
-                sta.headers['delta'] == last_sta.headers['delta']:
-                self.stations.append(sta)
+            last_sac = self.sacs[-1]
+            if  sac.headers['kcmpnm'] == last_sac.headers['kcmpnm'] and \
+                sac.times[0] == last_sac.times[0] and \
+                sac.times[-1] == last_sac.times[-1] and \
+                sac.headers['delta'] == last_sac.headers['delta']:
+                self.sacs.append(sac)
             
                 
             else:
                 print(f"Data append faild: '{sacfile}'")
                 print(" >> Headers do not match for station '%s' and '%s'." \
-                    %(sta.headers['kstnm'], last_sta.headers['kstnm']))
+                    %(sac.headers['kstnm'], last_sac.headers['kstnm']))
  
         if sort_by_dist:
             self.sort_by_distance()
@@ -149,24 +149,24 @@ class XCorr:
             "max_dist": self.max_dist,
             "avg_dist": self.avg_dist,
             "sym": self.sym,
-            "stations": self.stations,
+            "sacs": self.sacs,
         }
 
 
     def sort_by_distance(self):
-        stations_dists = []
-        for ista in range(len(self.stations)):
-            stations_dists.append(self.stations[ista].headers["dist"])
-        self.stations = [x for _, x in sorted(zip(stations_dists, self.stations))]
+        sacs_dists = []
+        for ista in range(len(self.sacs)):
+            sacs_dists.append(self.sacs[ista].headers["dist"])
+        self.sacs = [x for _, x in sorted(zip(sacs_dists, self.sacs))]
 
 
     def update_attributes(self):
         # update distance and symmetry status attributes
-        nsta = len(self.stations)
+        nsta = len(self.sacs)
         # update: min_dist, max_dist, avg_dist 
         dists = []
         for ista in range(nsta):
-            dists.append(self.stations[ista].headers['dist'])
+            dists.append(self.sacs[ista].headers['dist'])
         self.min_dist = np.nanmin(dists)
         self.max_dist = np.nanmax(dists)
         self.avg_dist = np.nanmean(dists)
@@ -174,18 +174,18 @@ class XCorr:
         sym = True
 
         for ista in range(nsta):
-            sta = self.stations[ista]
+            sac = self.sacs[ista]
             # decide based on the minimum time
             if self.tmin == 0 or self.tmax == 0:
                 break # one-sided xcorr is always symmetric!
             # compare causal (positive lags) and acausal (negative lags) data
             causal = []
             acausal = []
-            for itime, time in enumerate(sta.times):
+            for itime, time in enumerate(sac.times):
                 if time < 0:
-                    acausal.append(sta.data[itime])
+                    acausal.append(sac.data[itime])
                 elif time > 0:
-                    causal.append(sta.data[itime])
+                    causal.append(sac.data[itime])
             if len(causal) == 0 or len(acausal) == 0:
                 break # one-sided xcorr is always symmetric!
             acausal = acausal[::-1] # reverse order
