@@ -18,7 +18,7 @@ import os
 import obspy
 import numpy as np
 
-from .sac import Sac
+from .trace import Sac
 
 
 class Event:

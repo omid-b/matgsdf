@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from core.event import Event
-from core.sac import Sac
+from core.trace import Sac
 from core.xcorr import XCorr
 
 from utils.calc import frequencies_from_periods
@@ -44,7 +44,7 @@ nfreqs = len(freqs)
 
 # test station read
 #------------------
-sac = Sac(test_sacfile)
+# sac = Sac(test_sacfile)
 
 #======================================#
 
@@ -251,6 +251,33 @@ def test_multichannel_isolation_filtering():
     plt.tight_layout()
     plt.show()
 
+
+def test_sac_class():
+    import obspy
+    st = obspy.read(test_sacfile)
+    tr = st[0]
+
+    sac_data = tr.data
+    sac_times = tr.times()
+    sac_headers = {}
+    for key in tr.stats.sac.keys():
+        sac_headers[key] = tr.stats.sac[key]
+
+    sac_obj = Sac()
+    sac_obj.append(sac_data, sac_times, sac_headers)
+    sac_obj.write('test.sac')
+
+    sac_obj = Sac()
+    sac_obj.read(test_sacfile)
+    sac_obj.write('test2.sac')
+
+
+
+
+    
+    
+
+
 if __name__=="__main__":
     # test_plot_egfs()
     # test_plot_event()
@@ -258,6 +285,7 @@ if __name__=="__main__":
     # test_narrow_band_filtered_seisomgrams()
     # test_tdomain_tapering()
     # test_multichannel_isolation_filtering()
+    test_sac_class()
 
 
 
