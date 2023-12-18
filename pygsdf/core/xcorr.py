@@ -27,7 +27,7 @@ import os
 import obspy
 import numpy as np
 
-from .trace import Sac
+from .trace import Trace
 
 class XCorr:
     """

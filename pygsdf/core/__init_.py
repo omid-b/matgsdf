@@ -1,4 +1,4 @@
 
 from . import event
-from . import station
+from . import trace
 from . import xcorr

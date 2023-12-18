@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from core.event import Event
-from core.trace import Sac
+from core.trace import Trace
 from core.xcorr import XCorr
 
 from utils.calc import frequencies_from_periods
@@ -263,13 +263,31 @@ def test_sac_class():
     for key in tr.stats.sac.keys():
         sac_headers[key] = tr.stats.sac[key]
 
-    sac_obj = Sac()
-    sac_obj.append(sac_data, sac_times, sac_headers)
-    sac_obj.write('test.sac')
+    trace = Trace()
+    trace.append(sac_data, sac_times, sac_headers)
+    trace.write('test_orig.sac')
+    trace.plot('test_orig')
 
-    sac_obj = Sac()
-    sac_obj.read(test_sacfile)
-    sac_obj.write('test2.sac')
+    trace = Trace('test_orig.sac')
+    trace.bandpass(0.01, 0.05, 'f', 0.1) # 20-100 s
+    trace.write('test_bandpass')
+    trace.plot('test_bandpass')
+
+    trace = Trace('test_orig.sac')
+    trace.taper(100, 2000, 3000)
+    trace.narrowband(20, 'p') # 20 s narrowband
+    # trace.taper(100, 2000, 3000)
+    trace.write('test_narrowband_20')
+    trace.plot('test_narrowband_20')
+
+    trace = Trace('test_orig.sac')
+    trace.taper(100, 2000, 3000)
+    trace.narrowband(30, 'p') # 30 s narrowband
+    # trace.taper(100, 2000, 3000)
+    trace.write('test_narrowband_30')
+    trace.plot('test_narrowband_30')
+
+
 
 
 
