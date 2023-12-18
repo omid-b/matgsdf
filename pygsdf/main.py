@@ -269,23 +269,28 @@ def test_sac_class():
     trace.plot('test_orig')
 
     trace = Trace('test_orig.sac')
-    trace.bandpass(0.01, 0.05, 'f', 0.1) # 20-100 s
-    trace.write('test_bandpass')
-    trace.plot('test_bandpass')
+    trace.resample(0.5)
+    trace.write('test.sac')
+    trace.plot('test.png')
 
-    trace = Trace('test_orig.sac')
-    trace.taper(100, 2000, 3000)
-    trace.narrowband(20, 'p') # 20 s narrowband
-    # trace.taper(100, 2000, 3000)
-    trace.write('test_narrowband_20')
-    trace.plot('test_narrowband_20')
+    # trace = Trace('test_orig.sac')
+    # trace.bandpass(0.01, 0.05, 'f', 0.1) # 20-100 s
+    # trace.write('test_bandpass')
+    # trace.plot('test_bandpass')
 
-    trace = Trace('test_orig.sac')
-    trace.taper(100, 2000, 3000)
-    trace.narrowband(30, 'p') # 30 s narrowband
+    # trace = Trace('test_orig.sac')
     # trace.taper(100, 2000, 3000)
-    trace.write('test_narrowband_30')
-    trace.plot('test_narrowband_30')
+    # trace.narrowband(20, 'p') # 20 s narrowband
+    # # trace.taper(100, 2000, 3000)
+    # trace.write('test_narrowband_20')
+    # trace.plot('test_narrowband_20')
+
+    # trace = Trace('test_orig.sac')
+    # trace.taper(100, 2000, 3000)
+    # trace.narrowband(30, 'p') # 30 s narrowband
+    # # trace.taper(100, 2000, 3000)
+    # trace.write('test_narrowband_30')
+    # trace.plot('test_narrowband_30')
 
 
 

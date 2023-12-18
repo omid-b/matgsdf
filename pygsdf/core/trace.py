@@ -27,6 +27,8 @@ from obspy.geodetics.base import locations2degrees
 from obspy.io.sac.sactrace import SACTrace
 from scipy.fft import fft, ifft, rfft, irfft
 
+from scipy.signal import butter,filtfilt
+
 All_Possible_SAC_Headers = [\
     "A", "ADJTM", "AZ", "B", "BAZ", "CMPAZ", "CMPINC", "DELTA",
     "DEPMAX", "DEPMEN", "DEPMIN", "DIST", "E", "EVDP", "EVEL",
@@ -239,15 +241,30 @@ class Trace:
         elif domain.lower() in ["t", "time"]: # apply time domain filter
             timeseries_filtered_tdomain = np.multiply(self.data, filter_design)
         else:
-            print("Error: type choices: 'FD' (Frequency Domain) or 'TD' (Time Domain)")
+            print("Error: type choices: 'F' (Frequency Domain) or 'T' (Time Domain)")
             exit(1)
         self.data = timeseries_filtered_tdomain
 
-    def resample(self, sample_rate):
-        tr = obspy.core.trace.Trace()
-        tr.data = np.array(self.data)
-        tr.times = np.array(self.times)
-        
+
+    def resample(self, fs):
+        """
+        fs: new sampling frequency
+
+        """
+        # step 1: low pass filter
+        order = 10
+        nyq_freq = 0.5 * fs
+        b, a = butter(order, nyq_freq / 3, btype='low', analog=False, fs=fs)
+        data_lp = filtfilt(b, a, self.data)
+        # step 2: linear 1D interpolation
+        new_delta = 1 / fs
+        new_times = np.arange(self.times[0], self.times[-1] + new_delta, new_delta)
+        new_data = np.interp(new_times, self.times, data_lp)
+        # save changes
+        self.data = new_data
+        self.times = new_times
+        self.update_headers()
+
 
 
     def demean(self):
