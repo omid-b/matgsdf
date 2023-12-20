@@ -246,20 +246,25 @@ class Trace:
         self.data = timeseries_filtered_tdomain
 
 
-    def resample(self, fs):
+    def resample(self, fs, lowpass=True):
         """
         fs: new sampling frequency
+        lowpass: apply appropriate low pass filtering before signal decimation (True/False)
 
         """
-        # step 1: low pass filter
-        order = 10
-        nyq_freq = 0.5 * fs
-        b, a = butter(order, nyq_freq / 3, btype='low', analog=False, fs=fs)
-        data_lp = filtfilt(b, a, self.data)
-        # step 2: linear 1D interpolation
         new_delta = 1 / fs
         new_times = np.arange(self.times[0], self.times[-1] + new_delta, new_delta)
-        new_data = np.interp(new_times, self.times, data_lp)
+        current_fs = 1 / self.headers['delta']
+        if fs < current_fs and lowpass:
+            # step 1: low pass filter
+            order = 10
+            nyq_freq = 0.5 * fs
+            b, a = butter(order, nyq_freq / 3, btype='low', analog=False, fs=fs)
+            data_lp = filtfilt(b, a, self.data)
+            # step 2: linear 1D interpolation
+            new_data = np.interp(new_times, self.times, data_lp)
+        else:
+            new_data = np.interp(new_times, self.times, self.data)
         # save changes
         self.data = new_data
         self.times = new_times
@@ -438,6 +443,7 @@ class Trace:
         plt.xlabel('Time (s)')
         plt.ylabel('Amplitude')
         plt.tight_layout()
+        # plt.ylim([-2000, 2000]) # just for test
         if output:
             fext = os.path.splitext(output)[1]
             if not fext:
