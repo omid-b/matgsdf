@@ -229,6 +229,7 @@ class Trace:
                 self.headers.pop(key)
 
 
+
     def filter(self, filter_design, domain):
         if type(filter_design) == list:
             filter_design = np.array(filter_design, dtype=float)
@@ -244,6 +245,36 @@ class Trace:
             print("Error: type choices: 'F' (Frequency Domain) or 'T' (Time Domain)")
             exit(1)
         self.data = timeseries_filtered_tdomain
+
+
+
+    def lowpass(self, cutoff, unit='f'):
+        current_fs = 1 / self.headers['delta']
+        order = 10
+        if unit.lower() in ["f", "frequency", "freq"]:
+            b, a = butter(order, cutoff, btype='lp', analog=False, fs=current_fs)
+        elif unit.lower() in ['p', 'period']:
+            b, a = butter(order, 1 / cutoff, btype='lp', analog=False, fs=current_fs)
+        else:
+            print("Error: unit must be either of 'period' or 'frequency'")
+            exit(1)
+        data_lp = filtfilt(b, a, self.data)
+        self.data = data_lp
+
+
+    def highpass(self, cutoff, unit='f'):
+        current_fs = 1 / self.headers['delta']
+        order = 10
+        if unit.lower() in ["f", "frequency", "freq"]:
+            b, a = butter(order, cutoff, btype='hp', analog=False, fs=current_fs)
+        elif unit.lower() in ['p', 'period']:
+            b, a = butter(order, 1 / cutoff, btype='hp', analog=False, fs=current_fs)
+        else:
+            print("Error: unit must be either of 'period' or 'frequency'")
+            exit(1)
+        data_hp = filtfilt(b, a, self.data)
+        self.data = data_hp
+
 
 
     def resample(self, fs, lowpass=True):

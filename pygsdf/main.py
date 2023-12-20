@@ -269,9 +269,17 @@ def test_sac_class():
     trace.plot('test_orig')
 
     trace = Trace('test_orig.sac')
-    trace.resample(0.5)
-    trace.write('test.sac')
-    trace.plot('test.png')
+    trace.taper(50, 2000, 3000)
+    trace.lowpass(30, 'p')
+    trace.highpass(30, 'p')
+    trace.write('test_1.sac')
+    trace.plot('test_1.png')
+
+    trace = Trace('test_orig.sac')
+    trace.taper(50, 2000, 3000)
+    trace.narrowband(30, 'p')
+    trace.write('test_2.sac')
+    trace.plot('test_2.png')
 
     # trace = Trace('test_orig.sac')
     # trace.bandpass(0.01, 0.05, 'f', 0.1) # 20-100 s
