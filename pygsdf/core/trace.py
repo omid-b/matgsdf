@@ -2,15 +2,15 @@
 
 # -*- coding: utf-8 -*-
 r"""
-Seismic SAC file Station class
+Seismic SAC file trace class
 ==============================
 
-read, process, and output single seismic traces
+read, process, and output processed single seismic traces
 
-Class Sac: single station SAC format trace
+Class Trace: single station SAC format trace
 
 Coded by: omid.bagherpur@gmail.com; github: omid-b
-Update: 2023-10-13 (WORK in Progress!)
+Update: 2023-12-30 (WORK in Progress!)
 
 """
 
@@ -25,9 +25,14 @@ from obspy.core import UTCDateTime
 from obspy.geodetics.base import gps2dist_azimuth
 from obspy.geodetics.base import locations2degrees
 from obspy.io.sac.sactrace import SACTrace
-from scipy.fft import fft, ifft, rfft, irfft
 
-from scipy.signal import butter,filtfilt
+from scipy.fft import fft
+from scipy.fft import ifft
+from scipy.fft import rfft
+from scipy.fft import irfft
+
+from scipy.signal import butter
+from scipy.signal import freqz
 
 All_Possible_SAC_Headers = [\
     "A", "ADJTM", "AZ", "B", "BAZ", "CMPAZ", "CMPINC", "DELTA",
@@ -73,6 +78,7 @@ class Trace:
         self.headers = {}
         self.starttime = None
         self.endtime = None
+        self.response_removed = False
 
         if sacfile != None:
             self.read(sacfile)
@@ -81,13 +87,13 @@ class Trace:
     def read(self, sacfile):
         """
         Read sac file: append data, times, and headers
+
         """
         if os.path.isfile(sacfile):
             sacfile = sacfile
         else:
             sacfile = None
-            print(f"Error: sac file does not exist: '{sacfile}'")
-            exit(-1)
+            raise ValueError(f"SAC file does not exist: '{sacfile}'")
 
         # try read sac data and times
         try:
@@ -95,10 +101,8 @@ class Trace:
             tr = st[0]
             data = tr.data
             times = tr.times()
-        except Exception as e:
-            print(e)
-            print(f"Error: could not read sac data: '{sacfile}'")
-            exit(-1)
+        except Exception:
+            raise ValueError(f"Could not read sac data: '{sacfile}'")
 
         headers = {}
         for key in  tr.stats.sac.keys():
@@ -108,14 +112,18 @@ class Trace:
 
 
     def append(self, data, times, headers):
+        """
+        Set the trace data, times and headers by appending the lists and headers dictionary
+
+        Note: this is an alternative to self.read() method
+
+        """
 
         if type(headers) != dict:
-            print("Error: appended 'headers' must be a type 'dict'.")
-            exit(1)
+            raise ValueError("Appended 'headers' must be a type 'dict'.")
 
         if len(times) != len(data):
-            print("Error: number of elements in 'times' and 'data' do not match!")
-            exit(1)
+            raise ValueError("Number of elements in 'times' and 'data' do not match!")
 
         self.data = data
         self.times = times
@@ -124,6 +132,10 @@ class Trace:
 
 
     def update_headers(self):
+        """
+        Class method to update trace headers after processing
+
+        """
 
         # 'knetwk', 'kstnm', 'kcmpnm', 'stla', 'stlo', 'stel'
         if 'station' in self.headers.keys():
@@ -141,8 +153,7 @@ class Trace:
 
         for key in Required_SAC_Headers:
             if key not in self.headers.keys():
-                print(f"Error: required header information is missing: '{key}'")
-                exit(1)
+                raise ValueError(f"Required header information is missing: '{key}'")
 
         self.headers['knetwk'] = str(self.headers['knetwk'])
         self.headers['kstnm'] = str(self.headers['kstnm'])
@@ -230,7 +241,14 @@ class Trace:
 
 
 
-    def filter(self, filter_design, domain):
+    def apply_filter(self, filter_design, domain):
+        """
+        Apply time or frequency domain filter to the trace data
+
+        filter_design: filter design, values between 0 and 1
+        domain: frequency or time; choices: ["f", "frequency", "freq", "t", "time"]
+
+        """
         if type(filter_design) == list:
             filter_design = np.array(filter_design, dtype=float)
 
@@ -242,73 +260,30 @@ class Trace:
         elif domain.lower() in ["t", "time"]: # apply time domain filter
             timeseries_filtered_tdomain = np.multiply(self.data, filter_design)
         else:
-            print("Error: type choices: 'F' (Frequency Domain) or 'T' (Time Domain)")
-            exit(1)
+            raise ValueError("Type choices: 'F' (Frequency Domain) or 'T' (Time Domain)")
+
         self.data = timeseries_filtered_tdomain
 
 
 
-    def lowpass(self, cutoff, unit='f'):
-        current_fs = 1 / self.headers['delta']
-        order = 10
-        if unit.lower() in ["f", "frequency", "freq"]:
-            b, a = butter(order, cutoff, btype='lp', analog=False, fs=current_fs)
-        elif unit.lower() in ['p', 'period']:
-            b, a = butter(order, 1 / cutoff, btype='lp', analog=False, fs=current_fs)
-        else:
-            print("Error: unit must be either of 'period' or 'frequency'")
-            exit(1)
-        data_lp = filtfilt(b, a, self.data)
-        self.data = data_lp
-
-
-    def highpass(self, cutoff, unit='f'):
-        current_fs = 1 / self.headers['delta']
-        order = 10
-        if unit.lower() in ["f", "frequency", "freq"]:
-            b, a = butter(order, cutoff, btype='hp', analog=False, fs=current_fs)
-        elif unit.lower() in ['p', 'period']:
-            b, a = butter(order, 1 / cutoff, btype='hp', analog=False, fs=current_fs)
-        else:
-            print("Error: unit must be either of 'period' or 'frequency'")
-            exit(1)
-        data_hp = filtfilt(b, a, self.data)
-        self.data = data_hp
-
-
-
-    def resample(self, fs, lowpass=True):
-        """
-        fs: new sampling frequency
-        lowpass: apply appropriate low pass filtering before signal decimation (True/False)
-
-        """
-        new_delta = 1 / fs
-        new_times = np.arange(self.times[0], self.times[-1] + new_delta, new_delta)
-        current_fs = 1 / self.headers['delta']
-        if fs < current_fs and lowpass:
-            # step 1: low pass filter
-            order = 10
-            nyq_freq = 0.5 * fs
-            b, a = butter(order, nyq_freq / 3, btype='low', analog=False, fs=fs)
-            data_lp = filtfilt(b, a, self.data)
-            # step 2: linear 1D interpolation
-            new_data = np.interp(new_times, self.times, data_lp)
-        else:
-            new_data = np.interp(new_times, self.times, self.data)
-        # save changes
-        self.data = new_data
-        self.times = new_times
-        self.update_headers()
-
-
-
     def demean(self):
+        """
+        Demean trace: subtract the mean from the data
+
+        """
         data_mean = np.nanmean(self.data)
         self.data = self.data - data_mean
 
 
     def detrend(self, method='spline', order=3, dspline=500):
+        """
+        Detrend trace using various methods
+        
+        method: detrending method; choices: ['spline', 'polynomial', 'linear', 'demean']
+        order: spline or polynomial order
+        dspline: number of dsplines (spline method only)
+
+        """
         tr = obspy.core.trace.Trace()
         tr.data = np.array(self.data)
         tr.times = np.array(self.times)
@@ -327,108 +302,17 @@ class Trace:
         self.data = tr.data
 
 
-    def narrowband(self, c, unit, taper_ratio=0.5, return_filter=False, plot=False):
-        """
-        c: central fequency/period of the narrow band filter (specified by 'unit')
-        unit: period/frequency
-        taper_ratio: taper_width = taper_ratio * central_frequency
-        return_filter: return filter design [faxis, filter_design]
-        plot: plot filter design
-        """
-        self.bandpass(c, c, unit=unit, taper_ratio=taper_ratio, plot=plot)
-
-
-    def bandpass(self, c1, c2, unit, taper_ratio=0.1, return_filter=False, plot=False):
-        """
-        c1, c2: corner periods/frequencies (specified by 'unit')
-        unit: period/frequency
-        taper_ratio: corner_taper_width = taper_ratio * central_frequency
-        plot: show filter design plot
-        return_filter: return filter design [faxis, filter_design]
-
-        **Notes**
-            1) if taper_ratio==0.0, it is going to be a box bandpass filter
-            1) if c1==c2, it is going to be a narrowband filter and taper_ratio must be > 0.0
-
-        """
-        # sanity checks
-        if unit.lower() in ['f', 'freq', 'frequency']:
-            f1 = float(c1)
-            f2 = float(c2)
-        elif unit.lower() in ['p', 'period']:
-            f1 = float(1 / c2)
-            f2 = float(1 / c1)
-        else:
-            print("Error: bandpass parameter: unit must be given as either 'p' or 'f'")
-            exit(1)
-        if f1 > f2:
-            print("Error: bandpass c1 and c2: c1 must be smaller than c2 (or equal to i.e. narrowband)!")
-            exit(1)
-        if f1 == f2 and taper_ratio==0.0:
-            print("Error: for narrowband filtering (c1=c2), 'taper_ratio' must be larger than 0.0!")
-            exit(1)
-
-        # design frequency domain bandpass filter
-        fc = (f1 + f2) / 2 # central frequency
-        faxis = np.arange(0, np.floor(self.headers['npts']/2) + 1, 1)\
-                / self.headers['delta'] / self.headers['npts']
-        # calculate filter taper width as a function of central frequency
-        freq_interval = faxis[1] - faxis[0]
-        taper_width = fc * taper_ratio
-
-        if fc == f1 == f2: # narrowband filtering
-
-            filter_design = np.exp(-1* np.power(faxis-fc, 2.) / 2. / np.power((taper_width * fc), 2))
-
-        else: # bandpass filtering
-
-            # first, design box filter
-            filter_design = np.zeros(len(faxis))
-            for ifreq, freq in enumerate(faxis):
-                if freq >= f1 and freq <= f2:
-                    filter_design[ifreq] = 1.0
-                    max_index = ifreq
-            
-            # design hanning taper
-            nhann = int((taper_width * 2) / freq_interval)
-            if nhann % 2 == 0:
-                nhann += 1
-            full_hanning = np.hanning(nhann)
-            half_hanning = []
-            for i in range(nhann):
-                half_hanning.append(full_hanning[i])
-                if full_hanning[i] == 1.0:
-                    break
-            # left hanning taper
-            ihann = 0
-            nhann = int(np.floor(nhann / 2)) + 1
-            for ifreq, freq in enumerate(faxis):
-                if freq >= (f1 - taper_width) and ihann < nhann:
-                    filter_design[ifreq] = half_hanning[ihann]
-                    ihann += 1
-            # right hanning taper
-            for ihann in range(nhann):
-                indx = max_index - ihann + int(taper_width / freq_interval)
-                filter_design[indx] = half_hanning[ihann]
-
-        if plot:
-            fig = plt.figure(figsize=(10, 3))
-            plt.plot(faxis, filter_design)
-            plt.show()
-            plt.close()
-
-        if return_filter:
-            return [faxis, filter_design]
-
-        self.filter(filter_design, domain='frequency')
-
-
-
     def taper(self, width=50, tmin=None, tmax=None):
         """
+        Apply taper to the tace in time range: [tmin, tmax]
+
         width: taper width in seconds
         tmin: minimum time that data tapers to zero
         tmax: maximum time that data tapers to zero
+
+        **Note**
+        If 'tmin' and 'tmax' not given, they will be set automatically
+        to the begin and end of the trace (similar to SAC command)
 
         """
         if tmin == None or tmin < (np.nanmin(self.times) + width):
@@ -463,7 +347,421 @@ class Trace:
             indx = max_index - ihann
             filt[indx] = half_hanning[ihann]
 
-        self.filter(filt, domain='time')
+        self.apply_filter(filt, domain='time')
+
+
+    def cut(self, cut_begin, cut_end):
+        """
+        cut trace in range: [cut_begin, cut_end]
+
+        cut_begin: cut begin time
+        cut_end: cut end time
+
+        """
+        current_fs = 1 / self.headers['delta']
+        new_times = np.arange(cut_begin, cut_end + current_fs, current_fs)
+        new_data = np.zeros(len(new_times))
+        new_times_interp = []
+        for t in new_times:
+            if t >= self.headers['b'] and t <= self.headers['e']:
+                new_times_interp.append(t)
+        # interpolate at times in new_times_interp (the rest is set to zero; zerofill)
+        new_data_interp = np.interp(new_times_interp, self.times, self.data)
+        for i, t in enumerate(new_times):
+            if t in new_times_interp:
+                indx = new_times_interp.index(t)
+                new_data[i] = new_data_interp[indx]
+        self.times = new_times
+        self.data = new_data
+        self.update_headers()
+
+
+    def whiten(self):
+        pass
+        # XXX
+
+
+    def normalize(self, type='onebit'):
+        pass
+        # XXX
+
+
+    def calc_snr(self, signal_window=[], noise_window=[], velocities=[]):
+        pass
+        # XXX
+
+
+    def remove_response(self, xml_file, output='VEL', water_level=60, 
+                        pre_filt=None, update_headers=True):
+        try:
+            inv = obspy.read_inventory(xml_file)
+            xml_knetwk = inv[0].code.split()[0]
+            xml_kstnm  = inv[0][0].code.split()[0]
+            xml_kcmpnm = inv[0][0][0].code.split()[0]
+            xml_stla   = float(inv[0][0].latitude)
+            xml_stlo   = float(inv[0][0].longitude)
+            xml_stel   = float(inv[0][0].elevation)
+            xml_cmpaz  = float(inv[0][0][0].azimuth)
+            xml_cmpinc = float(inv[0][0][0].dip) + 90
+        except:
+            raise ValueError("Could not read input XML file.")
+
+        if  xml_knetwk != self.headers['knetwk'] or \
+            xml_kstnm != self.headers['kstnm'] or \
+            xml_kcmpnm != self.headers['kcmpnm']:
+            raise ValueError('XML info tag (i.e. "network.station.component") does not match')
+        try:
+            tr = SACTrace( data=np.array(self.data), **self.headers)
+            tr.remove_response(inventory=inv, output=output, water_level=water_level, pre_filt=pre_filt)
+        except:
+            raise ValueError('Could not remove instrument response from data')
+        self.response_removed = True
+
+
+    def resample(self, fs, lowpass=True):
+        """
+        Resample trace at a different sampling frequency
+
+        fs: new sampling frequency
+        lowpass: apply appropriate low pass filtering before signal decimation (True/False)
+
+        """
+        new_delta = 1 / fs
+        new_times = np.arange(self.times[0], self.times[-1] + new_delta, new_delta)
+        current_fs = 1 / self.headers['delta']
+        if fs < current_fs and lowpass:
+            # step 1: low pass filter
+            nyq_freq = 0.5 * fs
+            self.lowpass(nyq_freq / 2, 'f', type='butter', butter_order=10)
+
+        # step 2: linear 1D interpolation
+        new_data = np.interp(new_times, self.times, self.data)
+        # save changes
+        self.data = new_data
+        self.times = new_times
+        self.update_headers()
+
+
+
+    def lowpass(self, c, unit, type='butter', butter_order=3, hann_width=None, plot=False, return_filter=False):
+        """
+        Apply lowpass filter to the trace
+
+        c: cutoff period/frequency (specified by 'unit')
+        unit: period/frequency; ; choices: ['f', 'freq','frequency', 'p', 'period']
+        type: Hanning or Butterworth taper?; choices: ['hann', 'butter']
+        butter_order: Butterworth filter tapering order
+        hann_width (only if type='hann''): if hann_width=None, hann_width = 0.5 * cutoff_frequency
+        plot: show filter design plot
+        return_filter: return frequency axis & filter design arrays [faxis, filter_design]
+
+        """
+        # sanity checks
+        if type.lower() not in ['hann', 'butter']:
+            raise ValueError("Type must be either 'butter' or 'hann'!")
+
+        if unit.lower() in ['f', 'freq', 'frequency']:
+            f = float(c)
+        elif unit.lower() in ['p', 'period']:
+            f = float(1 / c)
+        else:
+            raise ValueError("Lowpass filter parameter: unit must be either 'p' or 'f'")
+
+        # design and apply filter
+
+        faxis = np.arange(0, np.floor(self.headers['npts']/2) + 1, 1)\
+                    / self.headers['delta'] / self.headers['npts']
+
+        if type == 'butter':
+
+            current_fs = 1 / self.headers['delta']
+            b, a = butter(butter_order, f, btype='lowpass', analog=False, fs=current_fs)
+            _, filter_design = freqz(b, a, fs=current_fs, worN=len(faxis))
+            filter_design = np.absolute(filter_design)
+            
+        elif type == 'hann':
+
+            # first, design box filter
+            filter_design = np.zeros(len(faxis))
+            for ifreq, freq in enumerate(faxis):
+                if freq <= f:
+                    filter_design[ifreq] = 1.0
+                    max_index = ifreq
+            
+            # design lowpass hanning taper
+            if hann_width == None:
+                hann_width = 0.5 * f
+            freq_interval = faxis[1] - faxis[0]
+            nhann = int((hann_width * 2) / freq_interval)
+            if nhann % 2 == 0:
+                nhann += 1
+            full_hanning = np.hanning(nhann)
+            half_hanning = []
+            for i in range(nhann):
+                half_hanning.append(full_hanning[i])
+                if full_hanning[i] == 1.0:
+                    break
+            ihann = 0
+            nhann = int(np.floor(nhann / 2)) + 1
+            # lowpass filter => right hanning taper
+            for ihann in range(nhann):
+                indx = max_index - ihann + int(hann_width / freq_interval)
+                filter_design[indx] = half_hanning[ihann]
+
+        self.apply_filter(filter_design, 'frequency')
+
+        if plot:
+            fig = plt.figure(figsize=(10, 3))
+            plt.plot(faxis, filter_design)
+            plt.show()
+            plt.close()
+
+        if return_filter:
+            return [faxis, filter_design]
+
+
+
+    def highpass(self, c, unit, type='butter', butter_order=3, hann_width=None, plot=False, return_filter=False):
+        """
+        Apply highpass filter to the trace
+
+        c: cutoff period/frequency (specified by 'unit')
+        unit: period/frequency; ; choices: ['f', 'freq','frequency', 'p', 'period']
+        type: Hanning or Butterworth taper?; choices: ['hann', 'butter']
+        butter_order: Butterworth filter tapering order
+        hann_width (only if type='hann''): if hann_width=None, hann_width = 0.5 * cutoff_frequency
+        plot: show filter design plot
+        return_filter: return frequency axis & filter design arrays [faxis, filter_design]
+
+        """
+        # sanity checks
+        if type.lower() not in ['hann', 'butter']:
+            raise ValueError("Type must be either 'butter' or 'hann'!")
+
+        if unit.lower() in ['f', 'freq', 'frequency']:
+            f = float(c)
+        elif unit.lower() in ['p', 'period']:
+            f = float(1 / c)
+        else:
+            raise ValueError("Highpass filter parameter: unit must be either 'p' or 'f'")
+
+        # design and apply filter
+
+        faxis = np.arange(0, np.floor(self.headers['npts']/2) + 1, 1)\
+                    / self.headers['delta'] / self.headers['npts']
+
+        if type == 'butter':
+
+            current_fs = 1 / self.headers['delta']
+            b, a = butter(butter_order, f, btype='highpass', analog=False, fs=current_fs)
+            _, filter_design = freqz(b, a, fs=current_fs, worN=len(faxis))
+            filter_design = np.absolute(filter_design)
+
+        elif type == 'hann':
+
+            # first, design box filter
+            filter_design = np.zeros(len(faxis))
+            for ifreq, freq in enumerate(faxis):
+                if freq >= f:
+                    filter_design[ifreq] = 1.0
+                    max_index = ifreq
+            
+            # design lowpass hanning taper
+            if hann_width == None:
+                hann_width = 0.5 * f
+            freq_interval = faxis[1] - faxis[0]
+            nhann = int((hann_width * 2) / freq_interval)
+            if nhann % 2 == 0:
+                nhann += 1
+            full_hanning = np.hanning(nhann)
+            half_hanning = []
+            for i in range(nhann):
+                half_hanning.append(full_hanning[i])
+                if full_hanning[i] == 1.0:
+                    break
+            ihann = 0
+            nhann = int(np.floor(nhann / 2)) + 1
+            # highpass filter => left hanning taper
+            for ifreq, freq in enumerate(faxis):
+                if freq >= (f - hann_width) and ihann < nhann:
+                    filter_design[ifreq] = half_hanning[ihann]
+                    ihann += 1
+
+        self.apply_filter(filter_design, 'frequency')    
+
+        if plot:
+            fig = plt.figure(figsize=(10, 3))
+            plt.plot(faxis, filter_design)
+            plt.show()
+            plt.close()
+
+        if return_filter:
+            return [faxis, filter_design]
+
+
+
+
+    def bandstop(self, c1, c2, unit, type='butter', butter_order=3, hann_width=None, plot=False, return_filter=False):
+        """
+        Apply bandstop filter to the trace
+
+        c1, c2: corner/cutoff periods/frequencies (specified by 'unit')
+        unit: period/frequency; ; choices: ['f', 'freq','frequency', 'p', 'period']
+        type: Hanning or Butterworth taper?; choices: ['hann', 'butter']
+        butter_order: Butterworth filter tapering order
+        hann_width (only if type='hann''): if hann_width=None, hann_width = 0.5 * central_frequency
+        plot: show filter design plot
+        return_filter: return frequency axis & filter design arrays [faxis, filter_design]
+
+        **Notes**
+            1) if hann_width==0.0, it is going to be a box bandpass filter (band-stop filter)
+            1) if c1==c2, it is going to be a narrowband filter and hann_width must be > 0.0
+
+        """
+        # sanity checks
+        if type.lower() not in ['hann', 'butter']:
+            raise ValueError("Type must be either 'butter' or 'hann'!")
+
+        if unit.lower() in ['f', 'freq', 'frequency']:
+            f1 = float(c1)
+            f2 = float(c2)
+        elif unit.lower() in ['p', 'period']:
+            f1 = float(1 / c2)
+            f2 = float(1 / c1)
+        else:
+            raise ValueError("Bandstop parameter: unit must be either 'p' or 'f'")
+
+        if f1 >= f2:
+            raise ValueError("Bandstop c1 and c2: c1 must be smaller than c2!")
+
+
+        # Design and Apply Filter
+        faxis = np.arange(0, np.floor(self.headers['npts']/2) + 1, 1)\
+                    / self.headers['delta'] / self.headers['npts']
+        # calculate hanning taper width as a function of central frequency
+        fc = (f1 + f2) / 2 # central frequency
+        if hann_width == None:
+            hann_width = 0.5 * fc
+
+        if type=='butter':
+
+            current_fs = 1 / self.headers['delta']
+            b, a = butter(butter_order, [f1, f2], btype='bandstop', analog=False, fs=current_fs)
+            _, filter_design = freqz(b, a, fs=current_fs, worN=len(faxis))
+            filter_design = np.absolute(filter_design)
+
+        elif type=='hann':
+
+            _, fdesign_lp = self.lowpass(f1, 'f', type='hann', hann_width=hann_width, plot=False, return_filter=True)
+            _, fdesign_hp = self.highpass(f2, 'f', type='hann', hann_width=hann_width, plot=False, return_filter=True)
+            filter_design = np.zeros(len(faxis))
+            for i, _ in enumerate(fdesign_lp):
+            
+                if fdesign_lp[i] > 0 and fdesign_hp[i] > 0:
+                    filter_design[i] = np.max([fdesign_lp[i], fdesign_hp[i]])
+                elif fdesign_lp[i] > 0 and fdesign_hp[i] == 0:
+                    filter_design[i] = fdesign_lp[i]
+                elif fdesign_hp[i] > 0 and fdesign_lp[i] == 0:
+                    filter_design[i] = fdesign_hp[i]
+
+        self.apply_filter(filter_design, 'frequency')    
+            
+
+        if plot:
+            fig = plt.figure(figsize=(10, 3))
+            plt.plot(faxis, filter_design)
+            plt.show()
+            plt.close()
+
+        if return_filter:
+            return [faxis, filter_design]
+
+
+    def bandpass(self, c1, c2, unit, type='butter', butter_order=3, hann_width=None, plot=False, return_filter=False):
+        """
+        Apply bandpass filter to the trace
+
+        c1, c2: corner period/frequency (specified by 'unit')
+        unit: period/frequency; ; choices: ['f', 'freq','frequency', 'p', 'period']
+        type: Hanning or Butterworth taper?; choices: ['hann', 'butter']
+        butter_order: Butterworth filter tapering order
+        hann_width (only if type='hann''): if hann_width=None, hann_width = 0.5 * central_frequency
+        plot: show filter design plot
+        return_filter: return frequency axis & filter design arrays [faxis, filter_design]
+
+        **Notes**
+            1) if hann_width==0.0, it is going to be a box bandpass filter (band-stop filter)
+            1) if c1==c2, it is going to be a narrowband filter and hann_width must be > 0.0
+
+        """
+        # sanity checks
+        if type.lower() not in ['hann', 'butter']:
+            raise ValueError("Type must be either 'butter' or 'hann'!")
+
+        if unit.lower() in ['f', 'freq', 'frequency']:
+            f1 = float(c1)
+            f2 = float(c2)
+        elif unit.lower() in ['p', 'period']:
+            f1 = float(1 / c2)
+            f2 = float(1 / c1)
+        else:
+            raise ValueError("Bandpass parameter: unit must be either 'p' or 'f'")
+
+        if f1 > f2:
+            raise ValueError("Bandpass c1 and c2: c1 must be smaller than c2 (or equal to i.e. narrowband)!")
+
+        if f1 == f2 and type=='hann' and hann_width==0.0:
+            raise ValueError("For narrowband filtering (c1=c2), 'hann_width' must be larger than 0.0!")
+
+        # Design and Apply Filter
+        faxis = np.arange(0, np.floor(self.headers['npts']/2) + 1, 1)\
+                    / self.headers['delta'] / self.headers['npts']
+        # calculate hanning taper width as a function of central frequency
+        fc = (f1 + f2) / 2 # central frequency
+        if hann_width == None:
+            hann_width = 0.5 * fc
+
+        if type=='butter':
+            current_fs = 1 / self.headers['delta']
+            b, a = butter(butter_order, [f1, f2], btype='bandpass', analog=False, fs=current_fs)
+            _, filter_design = freqz(b, a, fs=current_fs, worN=len(faxis))
+            filter_design = np.absolute(filter_design)
+            self.apply_filter(filter_design, 'frequency')    
+        elif type=='hann':
+            _, fdesign_hp = self.highpass(f1, 'f', type='hann', hann_width=hann_width, plot=False, return_filter=True)
+            _, fdesign_lp = self.lowpass(f2, 'f', type='hann', hann_width=hann_width, plot=False, return_filter=True)
+            filter_design = np.multiply(fdesign_hp, fdesign_lp)
+
+        if plot:
+            fig = plt.figure(figsize=(10, 3))
+            plt.plot(faxis, filter_design)
+            plt.show()
+            plt.close()
+
+        if return_filter:
+            return [faxis, filter_design]
+
+
+
+    def narrowband(self, c, unit, hann_width=None, plot=False, return_filter=False):
+        """
+        Apply narrowband filter to the trace
+
+        c: central period/frequency (specified by 'unit')
+        unit: period/frequency; ; choices: ['f', 'freq','frequency', 'p', 'period']
+        hann_width: if hann_width=None, hann_width = 0.5 * central_frequency
+        plot: show filter design plot
+        return_filter: return frequency axis & filter design arrays [faxis, filter_design]
+
+        **Notes**
+
+        This narrowband filter is a bandpass type='hann' filter with c1==c2
+
+        """
+        faxis, filter_design = self.bandpass(c, c, unit=unit, type='hann', hann_width=hann_width,\
+                                             plot=plot, return_filter=True)
+        if return_filter:
+            return return_filter
 
 
 

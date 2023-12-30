@@ -266,20 +266,28 @@ def test_sac_class():
     trace = Trace()
     trace.append(sac_data, sac_times, sac_headers)
     trace.write('test_orig.sac')
-    trace.plot('test_orig')
 
     trace = Trace('test_orig.sac')
-    trace.taper(50, 2000, 3000)
-    trace.lowpass(30, 'p')
-    trace.highpass(30, 'p')
-    trace.write('test_1.sac')
-    trace.plot('test_1.png')
+    print('old npts', trace.get_headers()['npts'])
+    print('old delta', trace.get_headers()['delta'])
+    ret = trace.plot()
+    print(ret)
+    ret = trace.resample(0.50)
+    print(ret)
+    ret = trace.plot()
+    print(ret)
+    print('new npts', trace.get_headers()['npts'])
+    print('new delta', trace.get_headers()['delta'])
 
-    trace = Trace('test_orig.sac')
-    trace.taper(50, 2000, 3000)
-    trace.narrowband(30, 'p')
-    trace.write('test_2.sac')
-    trace.plot('test_2.png')
+
+    # for p in [20, 30, 40, 50, 60, 70, 80, 100, 120, 140, 160]:
+    #     f = 1/p
+    #     hann_width = f * 0.2
+    #     trace = Trace('test_orig.sac')
+    #     trace.taper(50, 2000, 3000)
+    #     trace.narrowband(p, 'p', hann_width=hann_width, plot=False)
+    #     trace.plot(f'test_{p}')
+
 
     # trace = Trace('test_orig.sac')
     # trace.bandpass(0.01, 0.05, 'f', 0.1) # 20-100 s
